@@ -27,3 +27,23 @@ class PolicyEngineError(AgentProofError):
 
 class MockToolError(AgentProofError):
     """Raised when a mock tool execution encounters an error."""
+
+
+class AIProviderError(AgentProofError):
+    """Base exception for AI provider inference errors."""
+
+
+class InferenceUnavailableError(AIProviderError):
+    """Raised when the requested AI inference service is unreachable or offline."""
+
+
+class InferenceTimeoutError(AIProviderError):
+    """Raised when an AI inference request exceeds the configured timeout."""
+
+
+class InferenceAuthError(AIProviderError):
+    """Raised when AI API credentials are missing, invalid, or unauthorized."""
+
+
+class InvalidImageError(AgentProofError):
+    """Raised when an uploaded screenshot is corrupted, too large, or an unsupported format."""

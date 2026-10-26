@@ -11,6 +11,7 @@ import { SettingsView } from "@/components/settings/SettingsView"
 import { PolicySimulatorView } from "@/components/policy/PolicySimulatorView"
 import { SecurityGlossaryView } from "@/components/glossary/SecurityGlossaryView"
 import { LiveTestingView } from "@/components/testing/LiveTestingView"
+import { MultimodalAnalysisView } from "@/components/analysis/MultimodalAnalysisView"
 import {
   fetchHealth,
   fetchModels,
@@ -154,6 +155,11 @@ export function App() {
       {/* Landing Showcase Section */}
       {currentTab === "landing" && (
         <LandingPage onOpenDashboard={() => setCurrentTab("overview")} />
+      )}
+
+      {/* Multimodal Threat AI (Gemma 4 Cloud) */}
+      {currentTab === "multimodal" && (
+        <MultimodalAnalysisView />
       )}
 
       {/* Live Testing Workbench & Fixtures */}

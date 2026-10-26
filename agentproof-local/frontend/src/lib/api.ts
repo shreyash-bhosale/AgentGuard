@@ -9,15 +9,56 @@ import {
   PolicySimulationResult,
   GlossaryItem,
   RunComparison,
+  AIReadinessInfo,
+  MultimodalAnalysisResponse,
 } from "@/types"
 
-const API_BASE = "/api"
+const RAW_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "")
+const API_BASE = RAW_BASE
+  ? (RAW_BASE.endsWith("/api") ? RAW_BASE : `${RAW_BASE}/api`)
+  : "/api"
 
 export async function fetchHealth(): Promise<HealthInfo> {
   const res = await fetch(`${API_BASE}/health`)
   if (!res.ok) throw new Error(`Health check failed: HTTP ${res.status}`)
   return res.json()
 }
+
+export async function fetchAiReadiness(provider?: string): Promise<AIReadinessInfo> {
+  const url = provider ? `${API_BASE}/ai/readiness?provider=${encodeURIComponent(provider)}` : `${API_BASE}/ai/readiness`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`AI readiness check failed: HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function analyzeMultimodalScreenshot(
+  formData: FormData,
+  timeoutMs: number = 60000
+): Promise<MultimodalAnalysisResponse> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const res = await fetch(`${API_BASE}/multimodal/analyze`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
+    if (!res.ok) {
+      const errorBody = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(errorBody.detail || `Threat analysis failed: HTTP ${res.status}`)
+    }
+    return res.json()
+  } catch (err: any) {
+    clearTimeout(timeoutId)
+    if (err.name === "AbortError") {
+      throw new Error(`Inference request timed out after ${timeoutMs / 1000}s. Cloud inference may be experiencing high latency.`)
+    }
+    throw err
+  }
+}
+
 
 export async function fetchModels(): Promise<ModelsInfo> {
   const res = await fetch(`${API_BASE}/models`)

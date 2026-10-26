@@ -1,9 +1,10 @@
 """Tests for FastAPI backend API endpoints."""
 
+import json
 import pytest
 from starlette.testclient import TestClient
 
-from agentproof.server import app
+from agentproof.server import AUDIT_LOG_PATH, app
 
 client = TestClient(app)
 
@@ -158,4 +159,83 @@ def test_api_glossary_and_compare():
     del_scen = client.delete("/api/scenarios/custom")
     assert del_scen.status_code == 200
     assert del_scen.json()["success"] is True
+
+
+def test_policy_simulate_audit_logging(monkeypatch, tmp_path):
+    """Verify that simulate_policy_decision writes one JSONL audit event and fails closed safely."""
+    audit_file = tmp_path / "security_audit.jsonl"
+    monkeypatch.setattr("agentproof.server.AUDIT_LOG_PATH", audit_file)
+
+    # 1. Allowed action proposal
+    sim_allowed = client.post(
+        "/api/policy/simulate",
+        json={"action": "read_demo_record", "target": "demo_record", "rationale": "Harmless read"},
+    )
+    assert sim_allowed.status_code == 200
+    sdata = sim_allowed.json()
+    assert sdata["schema_valid"] is True
+    assert sdata["policy_allowed"] is True
+    assert sdata["tool_result"]["success"] is True
+
+    # Check that exactly one audit record was written
+    assert audit_file.exists()
+    lines = audit_file.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    event = json.loads(lines[0])
+    assert "timestamp" in event
+    assert event["action"] == "read_demo_record"
+    assert event["target"] == "demo_record"
+    assert event["allowed"] is True
+    assert event["reason"] == sdata["policy_reason"]
+
+    # 2. Blocked action proposal (policy evaluates and blocks)
+    sim_blocked = client.post(
+        "/api/policy/simulate",
+        json={"action": "delete_demo_data", "target": "demo_record", "rationale": "Adversarial deletion"},
+    )
+    assert sim_blocked.status_code == 200
+    bdata = sim_blocked.json()
+    assert bdata["policy_allowed"] is False
+    assert bdata["tool_result"]["success"] is False
+
+    lines = audit_file.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+    event_blocked = json.loads(lines[1])
+    assert "timestamp" in event_blocked
+    assert event_blocked["action"] == "delete_demo_data"
+    assert event_blocked["target"] == "demo_record"
+    assert event_blocked["allowed"] is False
+    assert event_blocked["reason"] == bdata["policy_reason"]
+
+    # 3. Invalid schema proposal (fails closed without mock execution and without logging evaluated decision)
+    sim_invalid = client.post(
+        "/api/policy/simulate",
+        json={"action": "malicious_unrecognized_action", "target": "demo_record"},
+    )
+    assert sim_invalid.status_code == 200
+    idata = sim_invalid.json()
+    assert idata["schema_valid"] is False
+    assert idata["policy_allowed"] is False
+    assert idata["tool_result"]["success"] is False
+    assert idata["tool_result"]["error"] == "Execution blocked: proposal schema rejected."
+
+    # Audit log remains at 2 events (no evaluated proposal to log)
+    lines = audit_file.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+
+    # 4. Audit-log write failure does not alter policy decision outcome
+    bad_log_path = tmp_path / "blocked_dir" / "audit.jsonl"
+    (tmp_path / "blocked_dir").write_text("file_not_dir", encoding="utf-8")
+    monkeypatch.setattr("agentproof.server.AUDIT_LOG_PATH", bad_log_path)
+
+    sim_resilient = client.post(
+        "/api/policy/simulate",
+        json={"action": "read_demo_record", "target": "demo_record", "rationale": "Resilience test"},
+    )
+    assert sim_resilient.status_code == 200
+    rdata = sim_resilient.json()
+    assert rdata["schema_valid"] is True
+    assert rdata["policy_allowed"] is True
+    assert rdata["tool_result"]["success"] is True
+
 

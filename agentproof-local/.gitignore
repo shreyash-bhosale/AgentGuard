@@ -24,6 +24,7 @@ htmlcov/
 reports/*.json
 reports/*.csv
 reports/*.md
+reports/*.jsonl
 !reports/.gitkeep
 
 # Local environment configuration

@@ -72,6 +72,14 @@ export function OverviewView({
               </button>
 
               <button
+                onClick={() => onNavigateTab("multimodal")}
+                className="inline-flex items-center gap-2 rounded-lg border border-[#4B8BF4]/40 bg-[#4B8BF4]/10 px-4 py-2.5 text-xs font-semibold text-[#4B8BF4] hover:bg-[#4B8BF4]/20 transition-all"
+              >
+                <Sparkles className="h-4 w-4" />
+                Gemma 4 Multimodal
+              </button>
+
+              <button
                 onClick={() => onNavigateTab("lab")}
                 className="inline-flex items-center gap-2 rounded-lg border border-[#263246] bg-[#121925] px-4 py-2.5 text-xs font-semibold text-[#F1F5FB] hover:bg-[#182130] hover:border-[#3B4A63] transition-all"
               >

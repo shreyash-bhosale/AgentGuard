@@ -5,17 +5,68 @@ and reporting system via local HTTP endpoints.
 """
 
 from datetime import datetime, timezone
+import json
+import logging
+import os
+from pathlib import Path
 from typing import Any, Literal, Optional
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+
+logger = logging.getLogger("agentproof.server")
+
+AUDIT_LOG_PATH = Path(__file__).resolve().parent.parent / "reports" / "security_audit.jsonl"
+
+
+def log_policy_decision(
+    action: str,
+    target: str,
+    allowed: bool,
+    reason: str,
+) -> None:
+    """Log an evaluated policy decision to the append-only security audit file."""
+    try:
+        AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "target": target,
+            "allowed": allowed,
+            "reason": reason,
+        }
+        with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+    except Exception as exc:
+        logger.warning("Failed to write to security audit log %s: %s", AUDIT_LOG_PATH, exc)
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from contextlib import asynccontextmanager
 import logging
 
+from agentproof.ai_provider import get_ai_provider
 from agentproof.config import config
+from agentproof.exceptions import (
+    AIProviderError,
+    InferenceAuthError,
+    InferenceTimeoutError,
+    InferenceUnavailableError,
+    InvalidImageError,
+    SchemaValidationError,
+)
 from agentproof.llm_client import check_ollama_connection
 from agentproof.metrics import calculate_metrics
+from agentproof.multimodal_analyzer import MultimodalAnalyzer
 from agentproof.reporting import (
     generate_csv_report,
     generate_json_report,
@@ -29,7 +80,9 @@ from agentproof.scenario_runner import (
     run_scenarios,
     validate_scenario,
 )
-from agentproof.schemas import ScenarioModel
+from agentproof.schemas import MultimodalAnalysisResponse, ScenarioModel
+
+
 
 logger = logging.getLogger("agentguard.server")
 
@@ -48,24 +101,38 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AgentProof Local API",
-    description="Deterministic AI Agent Security & Policy Evaluation Backend",
+    title="AgentGuard Security & Multimodal API",
+    description="Deterministic AI Agent Security, Policy Evaluation & Cloud Gemma 4 Multimodal Backend",
     version=config.app_version,
     lifespan=lifespan,
 )
 
-# Narrow CORS configuration for local development
+# CORS configuration supporting local dev, preview ports, and production Vercel frontend
+configured_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+cors_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "https://frontend-lake-delta-0bodi7q6wt.vercel.app",
+] + configured_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+    allow_origins=cors_origins if "*" not in configured_origins else ["*"],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS", "DELETE"],
     allow_headers=["*"],
 )
 
 # In-memory store for evaluation runs and custom scenarios during server lifetime
 EVALUATION_HISTORY: list[dict[str, Any]] = []
 CUSTOM_SCENARIOS: list[dict[str, Any]] = []
+multimodal_analyzer = MultimodalAnalyzer()
 
 
 class EvaluationRequest(BaseModel):
@@ -77,7 +144,7 @@ class EvaluationRequest(BaseModel):
 
 @app.get("/api/health")
 def get_health() -> dict[str, Any]:
-    """Health check returning backend status and live Ollama connectivity."""
+    """Health check returning backend status, live Ollama connectivity, browser sandbox, and cloud AI provider metadata."""
     ollama_info = check_ollama_connection(config.ollama_url, timeout=3)
     browser_info = {
         "enabled": config.browser_triage_enabled,
@@ -93,11 +160,16 @@ def get_health() -> dict[str, Any]:
     except Exception as exc:
         browser_info["available"] = False
         browser_info["error"] = str(exc)
-
     return {
         "status": "healthy",
         "version": config.app_version,
-        "backend": "FastAPI + AgentProof Core",
+        "backend": "FastAPI + AgentGuard Core",
+        "ai_provider": {
+            "configured_provider": config.ai_provider,
+            "gemma_model": config.gemma_model,
+            "has_cloud_credentials": bool(config.gemma_api_key or config.gemma_endpoint),
+            "cloud_hosted": config.ai_provider in ("gemma_cloud", "gemma_openai"),
+        },
         "ollama": ollama_info,
         "browser_triage": browser_info,
         "default_model": config.default_model,
@@ -106,9 +178,17 @@ def get_health() -> dict[str, Any]:
 
 
 @app.get("/api/ai/readiness")
-def get_ai_readiness() -> dict[str, Any]:
-    """Readiness and capability check for local AI and browser sandbox triage."""
-    ollama_info = check_ollama_connection(config.ollama_url, timeout=3)
+@app.get("/api/v1/readiness")
+async def get_ai_readiness(provider: Optional[str] = Query(default=None)) -> dict[str, Any]:
+    """Readiness probe checking Cloud AI provider, Ollama connectivity, and browser sandbox."""
+    provider_status: dict[str, Any] = {"available": False, "provider": provider or config.ai_provider}
+    try:
+        active_provider = get_ai_provider(provider)
+        provider_status = await active_provider.check_readiness()
+    except Exception as exc:
+        provider_status["error"] = str(exc)
+
+    ollama_info = check_ollama_connection(config.ollama_url, timeout=2)
     browser_avail = False
     browser_err = None
     try:
@@ -118,14 +198,17 @@ def get_ai_readiness() -> dict[str, Any]:
     except Exception as exc:
         browser_err = str(exc)
 
+    is_ready = bool(provider_status.get("available") or ollama_info.get("connected"))
     return {
-        "status": "ready" if ollama_info.get("connected") else "degraded",
+        "status": "ready" if is_ready else "degraded",
+        "ai_provider": provider_status,
         "ollama": ollama_info,
         "browser_sandbox": {
             "enabled": config.browser_triage_enabled,
             "available": browser_avail,
             "error": browser_err,
         },
+        "details": provider_status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -438,6 +521,12 @@ def simulate_policy_decision(req: PolicySimulateRequest) -> dict[str, Any]:
         }
 
     decision = evaluate_action(proposal)
+    log_policy_decision(
+        action=str(proposal.action),
+        target=str(proposal.target),
+        allowed=decision.allowed,
+        reason=str(decision.reason),
+    )
     if decision.allowed:
         tool_res = execute_mock_action(proposal.action, proposal.target)
     else:
@@ -670,10 +759,11 @@ def summarize_privacy_policy_endpoint(req: OllamaPrivacyPolicyRequest) -> dict[s
 
 
 # ---------------------------------------------------------------------------
-# Browser Autonomous URL Triage & Multimodal Analysis Endpoints
+# ---------------------------------------------------------------------------
+# Browser Autonomous URL Triage Endpoints
 # ---------------------------------------------------------------------------
 
-from agentproof.multimodal_analyzer import MultimodalThreatReport, default_multimodal_analyzer
+from agentproof.multimodal_analyzer import URLTriageThreatReport, default_multimodal_analyzer
 
 
 class URLTriageRequest(BaseModel):
@@ -689,15 +779,9 @@ class URLTriageRequest(BaseModel):
     )
 
 
-class MultimodalAnalyzeRequest(BaseModel):
-    """Request payload for uploaded screenshot threat evaluation."""
-    image_base64: str = Field(..., description="Base64-encoded image bytes (PNG, JPEG, WebP).")
-    url: Optional[str] = Field(default="uploaded_screenshot", description="Associated URL context if any.")
-
-
 @app.post(
     "/api/url/triage",
-    response_model=MultimodalThreatReport,
+    response_model=URLTriageThreatReport,
     dependencies=[Depends(verify_companion_token)],
     responses={
         400: {"description": "Invalid or blocked URL target"},
@@ -705,7 +789,7 @@ class MultimodalAnalyzeRequest(BaseModel):
         503: {"description": "Browser sandbox service unavailable"},
     },
 )
-async def triage_url_endpoint(req: URLTriageRequest) -> MultimodalThreatReport:
+async def triage_url_endpoint(req: URLTriageRequest) -> URLTriageThreatReport:
     """
     Execute secure, isolated, passive triage of a suspicious public URL.
     Validates destination against SSRF policies, captures bounded evidence via
@@ -750,35 +834,85 @@ async def triage_url_endpoint(req: URLTriageRequest) -> MultimodalThreatReport:
 
 @app.post(
     "/api/browser/triage",
-    response_model=MultimodalThreatReport,
+    response_model=URLTriageThreatReport,
     dependencies=[Depends(verify_companion_token)],
     include_in_schema=True,
 )
-async def triage_browser_alias_endpoint(req: URLTriageRequest) -> MultimodalThreatReport:
+async def triage_browser_alias_endpoint(req: URLTriageRequest) -> URLTriageThreatReport:
     """Canonical alias endpoint for /api/url/triage."""
     return await triage_url_endpoint(req)
 
 
-@app.post(
-    "/api/multimodal/analyze",
-    response_model=MultimodalThreatReport,
-    dependencies=[Depends(verify_companion_token)],
-)
-def analyze_screenshot_endpoint(req: MultimodalAnalyzeRequest) -> MultimodalThreatReport:
-    """Analyze an uploaded screenshot through ImageProcessor and deterministic risk engine."""
-    import base64
+# ---------------------------------------------------------------------------
+# Cloud Gemma 4 Multimodal Threat Analysis Endpoints
+# ---------------------------------------------------------------------------
 
+@app.post("/api/multimodal/analyze", response_model=MultimodalAnalysisResponse)
+@app.post("/api/v1/analyze/screenshot", response_model=MultimodalAnalysisResponse)
+async def analyze_screenshot_endpoint(
+    screenshot: UploadFile = File(..., description="Target webpage screenshot file (PNG, JPEG, WebP)"),
+    url: Optional[str] = Form(default=None, description="Optional target URL for cross-validation"),
+    context: Optional[str] = Form(default=None, description="Optional user observation notes"),
+    provider: Optional[str] = Form(default=None, description="Optional explicit provider override"),
+) -> MultimodalAnalysisResponse:
+    """
+    Inspect a user-submitted webpage screenshot with cloud-hosted Gemma 4.
+    Extracts structured threat indicators, uncertainty boundaries, deterministic risk score,
+    and gates all recommended actions through the authoritative policy engine.
+    """
+    # 1. Read bounded file stream
     try:
-        image_bytes = base64.b64decode(req.image_base64, validate=True)
+        raw_bytes = await screenshot.read()
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid base64 image data: {exc}")
+        raise HTTPException(status_code=400, detail=f"Failed to read uploaded screenshot: {exc}")
 
-    report = default_multimodal_analyzer.analyze_screenshot(
-        image_bytes=image_bytes,
-        url=req.url or "uploaded_screenshot",
-    )
-    return report
+    if not raw_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty (0 bytes).")
 
+    if len(raw_bytes) > config.max_image_upload_bytes:
+        limit_mb = config.max_image_upload_bytes / (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"Uploaded image ({len(raw_bytes)/(1024*1024):.1f}MB) exceeds {limit_mb:.0f}MB limit.",
+        )
 
+    # 2. Execute multimodal security inspection
+    try:
+        result = await multimodal_analyzer.analyze_screenshot(
+            image_bytes=raw_bytes,
+            filename=screenshot.filename or "screenshot.png",
+            url_context=url,
+            user_context=context,
+            provider_name=provider,
+        )
+        return result
+    except InvalidImageError as exc:
+        raise HTTPException(status_code=400, detail=f"Image validation failed: {exc}")
+    except InferenceAuthError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Inference authentication error: {exc}. Please verify GEMMA_API_KEY.",
+        )
+    except InferenceTimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Cloud model inference timed out: {exc}. Check endpoint latency.",
+        )
+    except InferenceUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cloud Gemma inference service unavailable: {exc}",
+        )
+    except SchemaValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Model output schema validation failed: {exc}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error during multimodal analysis")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal error during threat analysis. Please retry your request.",
+        )
 
 

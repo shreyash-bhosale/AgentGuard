@@ -1,0 +1,38 @@
+# Ignore secrets, virtual environments, build artifacts, and caches
+.env
+.env.*
+.env.local
+!.env.example
+
+# Virtual environments
+.venv
+venv
+ENV/
+env/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local data & user artifacts
+reports/*
+!reports/.gitkeep
+quarantine_vault/*
+!quarantine_vault/.gitkeep
+*.log
+
+# Frontend assets (not needed in backend container)
+frontend/
+node_modules/
+
+# Git & OS metadata
+.git
+.gitignore
+.DS_Store
+.cursor/
+.agents/

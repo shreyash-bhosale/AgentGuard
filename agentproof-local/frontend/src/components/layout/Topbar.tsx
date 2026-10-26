@@ -49,10 +49,10 @@ export function Topbar({
 
         <StatusBadge
           variant={isOllamaConnected ? "allow" : "warn"}
-          className="text-[11px]"
+          className="text-[11px] font-mono tracking-wider uppercase font-medium"
           icon={<ShieldCheck className="h-3 w-3" />}
         >
-          {isOllamaConnected ? "Gemma 4 Ready" : "Baseline Active"}
+          {isOllamaConnected ? "GEMMA 4 READY" : "BASELINE ACTIVE"}
         </StatusBadge>
       </div>
     </header>

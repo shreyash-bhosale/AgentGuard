@@ -10,6 +10,7 @@ import {
   Lock,
   BookOpen,
   ShieldAlert,
+  Eye,
   LucideIcon,
 } from "lucide-react"
 
@@ -21,6 +22,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: "landing", label: "Showcase Landing", icon: Sparkles },
+  { id: "multimodal", label: "Multimodal Threat AI (Gemma 4)", icon: Eye },
   { id: "testing", label: "Live Testing & Fixtures", icon: ShieldAlert },
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "lab", label: "Evaluation Lab", icon: FlaskConical },

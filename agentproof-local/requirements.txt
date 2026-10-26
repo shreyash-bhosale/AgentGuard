@@ -1,9 +1,13 @@
-streamlit
-requests
-pydantic
-pytest
 fastapi
 uvicorn
+pydantic
+requests
 httpx
+google-genai
+pillow
+python-multipart
 pandas
 playwright>=1.40.0
+streamlit
+pytest
+python-dotenv

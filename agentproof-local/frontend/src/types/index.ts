@@ -190,3 +190,87 @@ export interface RunComparison {
     validity_rate_pct: number
   }
 }
+
+export interface MultimodalThreatReport {
+  summary: string
+  observed_indicators: string[]
+  suspicious_elements: string[]
+  supporting_evidence: string[]
+  uncertainty: string
+  recommended_user_action: string
+  hypothesized_threat_type: string
+  model_confidence: number
+}
+
+export interface MultimodalAnalysisResponse {
+  success: boolean
+  threat_report?: MultimodalThreatReport
+  risk_assessment: {
+    score: number
+    level: "Low" | "Medium" | "High" | "Critical"
+    risk_level: string
+    recommendation: string
+    critical_override: boolean
+    critical_reasons?: string[]
+    findings_count: number
+    findings: Array<{
+      id: string
+      title: string
+      category: string
+      severity: string
+      weight: number
+      evidence: string
+      remediation: string
+      isCriticalOverride: boolean
+      verified: boolean
+      source: string
+    }>
+    category_scores: {
+      technical: number
+      security: number
+      privacy: number
+      unverified: number
+    }
+    explanation: string
+  }
+  policy_decision: {
+    allowed: boolean
+    reason: string
+    action: string
+  }
+  policy_scope_notice?: string
+  provider_metadata: {
+    provider: string
+    model: string
+    cloud_hosted: boolean
+    endpoint?: string
+    duration_ms?: number
+    attempts?: number
+  }
+  image_metadata: {
+    original_filename: string
+    format: string
+    mime_type: string
+    original_size_bytes: number
+    normalized_size_bytes: number
+    original_dimensions: [number, number]
+    final_dimensions: [number, number]
+    resized: boolean
+  }
+  error?: string
+}
+
+export interface AIReadinessInfo {
+  status: "ready" | "unavailable"
+  details: {
+    available: boolean
+    provider: string
+    cloud_hosted: boolean
+    model: string
+    configured: boolean
+    display_name?: string
+    endpoint?: string
+    models?: string[]
+    error?: string | null
+  }
+}

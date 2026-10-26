@@ -302,15 +302,139 @@ The test suite covers:
 
 ---
 
+## 11. Multimodal Threat AI (Gemma 4 Cloud Vision)
+
+AgentGuard integrates Google Gemma 4 (`gemma-4-26b-a4b-it`) via the official `google-genai` SDK to perform multimodal threat analysis on screenshots and visual web elements.
+
+### Request Flow & Separation of Concerns
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User / Browser
+    participant React as React Frontend
+    participant Fast as FastAPI Backend (/api/v1/analyze/screenshot)
+    participant Pillow as Image Sanitizer (PIL)
+    participant Gemma as Gemma 4 Cloud (google-genai)
+    participant Risk as Defensible Risk Engine
+    participant Policy as Deterministic Policy Engine
+
+    User->>React: Uploads PNG/JPEG/WebP screenshot
+    React->>Fast: Multipart Form (screenshot, url, context)
+    Fast->>Pillow: Magic bytes verification & dimension normalization (<=2048x2048)
+    Fast->>Gemma: Sandboxed security instruction + image bytes
+    Gemma-->>Fast: Structured MultimodalThreatReport (JSON schema)
+    Fast->>Risk: Calibrated risk scoring (Neutral UI = 0 pts; Genuine deception = 22 pts)
+    Fast->>Policy: Guardrail check on automated host tool actions (Strictly decoupled)
+    Fast-->>React: MultimodalAnalysisResponse with verified/unverified evidence
+    React-->>User: Visual Threat Report, Risk Gauge, Evidence Breakdown
+```
+
+### API Endpoints
+
+#### 1. Provider Readiness
+`GET /api/v1/readiness` (Alias: `GET /api/ai/readiness`)
+
+**Response (200 OK):**
+```json
+{
+  "status": "ready",
+  "details": {
+    "available": true,
+    "provider": "gemma_cloud",
+    "cloud_hosted": true,
+    "model": "gemma-4-26b-a4b-it",
+    "configured": true,
+    "display_name": "Gemma 4 26B A4B IT",
+    "error": null
+  }
+}
+```
+
+#### 2. Screenshot Threat Analysis
+`POST /api/v1/analyze/screenshot` (Alias: `POST /api/multimodal/analyze`)
+
+**Request Format:** `multipart/form-data`
+- `screenshot` (file, required): Image in PNG, JPEG, or WebP format (max 10MB).
+- `url` (text, optional): Reported site URL (treated as untrusted input).
+- `context` (text, optional): Caller observation notes (treated as untrusted input).
+
+**Response Schema:** `MultimodalAnalysisResponse`
+```json
+{
+  "success": true,
+  "threat_report": {
+    "summary": "Standard corporate single sign-on page over verified HTTPS.",
+    "observed_indicators": [
+      "Brand banner and company logo",
+      "Email and password input fields",
+      "Standard sign-in button"
+    ],
+    "suspicious_elements": [],
+    "supporting_evidence": [
+      "Site served over HTTPS encryption"
+    ],
+    "uncertainty": "Screenshot inspection cannot verify server-side backend authentication.",
+    "recommended_user_action": "Proceed with corporate SSO.",
+    "hypothesized_threat_type": "benign_login_page",
+    "model_confidence": 0.90
+  },
+  "risk_assessment": {
+    "score": 0,
+    "risk_level": "Low",
+    "recommendation": "Visual layout appears standard. Follow standard corporate authentication practices.",
+    "critical_override": false,
+    "findings_count": 0,
+    "findings": [],
+    "category_scores": {},
+    "coverage": {
+      "visual_multimodal_inspection": true,
+      "domain_reputation_verified": true,
+      "tls_certificate_verified": false,
+      "script_behavior_monitored": false
+    }
+  },
+  "policy_decision": {
+    "allowed": true,
+    "reason": "Action and target match the explicit allowlist.",
+    "action": "read_demo_record"
+  },
+  "policy_scope_notice": "Agent Tool Execution Guardrail: Evaluates whether an automated agent is authorized to execute host actions; does NOT certify website safety.",
+  "provider_metadata": {
+    "provider": "gemma_cloud",
+    "model": "gemma-4-26b-a4b-it",
+    "cloud_hosted": true,
+    "duration_ms": 7820,
+    "attempts": 1
+  },
+  "image_metadata": {
+    "format": "PNG",
+    "final_dimensions": [600, 400]
+  },
+  "error": null
+}
+```
+
+### Risk Calibration & Decision Separation
+
+1. **Defensible Evidence Scoring**: Standard login form elements (email/password inputs, sign-in buttons) are assigned `weight = 0`. They are factual observations, not indicators of compromise.
+2. **Deception vs. Observation**: Genuine deceptive cues (brand impersonation, fake urgency countdowns, scareware dialogs) add calibrated points (+22).
+3. **Transport Security Critical Override**: When a page requests credentials over unencrypted HTTP, an automated critical override triggers a score $\ge 75$ (Critical Risk).
+4. **Decoupled Policy Engine**: The model's `recommended_user_action` is untrusted advisory text. It NEVER drives privileged tool operations. The policy engine strictly audits agent actions against an explicit allowlist.
+5. **Clear Uncertainty Communication**: Visual inspection cannot independently verify TLS certificates, DNS resolution, or hidden client-side scripts. Every analysis explicitly labels findings as `[VERIFIED TECHNICAL]` vs `[UNVERIFIED HYPOTHESIS]`.
+
+---
+
 ## 12. Security Limitations & Future Improvements
 
 ### Security Limitations
-- **Simulated Environment Only**: AgentProof Local evaluates synthetic actions (`read_demo_record`, `export_demo_data`, `delete_demo_data`) against in-memory mock targets (`demo_record`, `production_database`). No real tools or infrastructure are connected.
-- **Static Allowlist**: The current baseline policy engine implements an explicit allowlist permitting only `read_demo_record` on `demo_record`.
-- **Air-Gapped Simulation**: Model outputs are tested locally; results reflect the model's instruction-following adherence and policy containment under local prompting conditions.
+- **Visual Inspection Limitations**: A screenshot alone cannot verify TLS certificate authenticity, domain ownership, DNS spoofing, or obfuscated JavaScript execution.
+- **Simulated Environment Guardrails**: AgentProof Local evaluates host actions against in-memory mock targets (`demo_record`, `production_database`).
+- **Adversarial Images**: While instructions are sandboxed and fail-closed policies prevent unauthorized host execution, prompt-injection images are analyzed with explicit uncertainty labels.
 
-### Future Improvements
-- Dynamic policy rule editing (e.g., Cedar or Rego policy languages).
-- Multi-turn agent trajectory evaluation.
-- Automated adversarial fuzzing and jailbreak prompt generation.
-- Support for multi-modal agent proposals (e.g., visual screen grounding).
+### Deployment Requirements
+- **Server Deployment**: FastAPI backend can be containerized using `agentproof-local/Dockerfile` and deployed to Google Cloud Run, AWS ECS, or Render with `GEMMA_API_KEY` set as a secret.
+- **Frontend Deployment**: React/Vite frontend on Vercel requires `VITE_API_BASE_URL` pointing to the deployed backend URL.
+
+---
+
