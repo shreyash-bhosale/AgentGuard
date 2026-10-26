@@ -51,6 +51,9 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from contextlib import asynccontextmanager
+import logging
+
 from agentproof.ai_provider import get_ai_provider
 from agentproof.config import config
 from agentproof.exceptions import (
@@ -81,10 +84,27 @@ from agentproof.schemas import MultimodalAnalysisResponse, ScenarioModel
 
 
 
+logger = logging.getLogger("agentguard.server")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager ensuring clean resource shutdown."""
+    yield
+    # Clean up browser sandbox runtime on application termination
+    try:
+        from agentproof.browser_sandbox import BrowserManager
+        mgr = await BrowserManager.get_instance()
+        await mgr.close()
+    except Exception:
+        pass
+
+
 app = FastAPI(
     title="AgentGuard Security & Multimodal API",
     description="Deterministic AI Agent Security, Policy Evaluation & Cloud Gemma 4 Multimodal Backend",
     version=config.app_version,
+    lifespan=lifespan,
 )
 
 # CORS configuration supporting local dev, preview ports, and production Vercel frontend
@@ -124,8 +144,22 @@ class EvaluationRequest(BaseModel):
 
 @app.get("/api/health")
 def get_health() -> dict[str, Any]:
-    """Health check returning backend status, live Ollama connectivity, and cloud AI provider metadata."""
-    ollama_info = check_ollama_connection(config.ollama_url, timeout=2)
+    """Health check returning backend status, live Ollama connectivity, browser sandbox, and cloud AI provider metadata."""
+    ollama_info = check_ollama_connection(config.ollama_url, timeout=3)
+    browser_info = {
+        "enabled": config.browser_triage_enabled,
+        "available": True,
+    }
+    try:
+        from agentproof.browser_sandbox import BrowserManager
+        mgr = BrowserManager()
+        is_avail, err = mgr.is_available()
+        browser_info["available"] = is_avail
+        if err:
+            browser_info["error"] = err
+    except Exception as exc:
+        browser_info["available"] = False
+        browser_info["error"] = str(exc)
     return {
         "status": "healthy",
         "version": config.app_version,
@@ -137,7 +171,44 @@ def get_health() -> dict[str, Any]:
             "cloud_hosted": config.ai_provider in ("gemma_cloud", "gemma_openai"),
         },
         "ollama": ollama_info,
+        "browser_triage": browser_info,
         "default_model": config.default_model,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/ai/readiness")
+@app.get("/api/v1/readiness")
+async def get_ai_readiness(provider: Optional[str] = Query(default=None)) -> dict[str, Any]:
+    """Readiness probe checking Cloud AI provider, Ollama connectivity, and browser sandbox."""
+    provider_status: dict[str, Any] = {"available": False, "provider": provider or config.ai_provider}
+    try:
+        active_provider = get_ai_provider(provider)
+        provider_status = await active_provider.check_readiness()
+    except Exception as exc:
+        provider_status["error"] = str(exc)
+
+    ollama_info = check_ollama_connection(config.ollama_url, timeout=2)
+    browser_avail = False
+    browser_err = None
+    try:
+        from agentproof.browser_sandbox import BrowserManager
+        mgr = BrowserManager()
+        browser_avail, browser_err = mgr.is_available()
+    except Exception as exc:
+        browser_err = str(exc)
+
+    is_ready = bool(provider_status.get("available") or ollama_info.get("connected"))
+    return {
+        "status": "ready" if is_ready else "degraded",
+        "ai_provider": provider_status,
+        "ollama": ollama_info,
+        "browser_sandbox": {
+            "enabled": config.browser_triage_enabled,
+            "available": browser_avail,
+            "error": browser_err,
+        },
+        "details": provider_status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -688,32 +759,93 @@ def summarize_privacy_policy_endpoint(req: OllamaPrivacyPolicyRequest) -> dict[s
 
 
 # ---------------------------------------------------------------------------
-# Cloud Gemma 4 Multimodal Threat Analysis Endpoints
+# ---------------------------------------------------------------------------
+# Browser Autonomous URL Triage Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/api/ai/readiness")
-@app.get("/api/v1/readiness")
-async def get_ai_readiness(provider: Optional[str] = Query(default=None)) -> dict[str, Any]:
-    """
-    Verify model readiness and inference availability for the selected provider.
-    Verifies API keys, endpoint reachability, and model cards without running heavy generation.
-    """
-    try:
-        active_provider = get_ai_provider(provider)
-        status = await active_provider.check_readiness()
-        return {
-            "status": "ready" if status.get("available") else "unavailable",
-            "details": status,
-        }
-    except Exception as exc:
-        return {
-            "status": "unavailable",
-            "details": {
-                "available": False,
-                "error": f"Readiness probe error: {exc}",
-            },
-        }
+from agentproof.multimodal_analyzer import URLTriageThreatReport, default_multimodal_analyzer
 
+
+class URLTriageRequest(BaseModel):
+    """Request payload for passive autonomous URL triage."""
+    url: str = Field(..., description="Target public HTTP/HTTPS URL to triage passively.", max_length=2048)
+    capture_mode: Literal["viewport", "full_page"] = Field(
+        default="viewport",
+        description="Capture mode for screenshot observation (viewport or full_page).",
+    )
+    model_name: Optional[str] = Field(
+        default=None,
+        description="Optional local Ollama model name for explanation synthesis.",
+    )
+
+
+@app.post(
+    "/api/url/triage",
+    response_model=URLTriageThreatReport,
+    dependencies=[Depends(verify_companion_token)],
+    responses={
+        400: {"description": "Invalid or blocked URL target"},
+        401: {"description": "Unauthorized: valid companion token required"},
+        503: {"description": "Browser sandbox service unavailable"},
+    },
+)
+async def triage_url_endpoint(req: URLTriageRequest) -> URLTriageThreatReport:
+    """
+    Execute secure, isolated, passive triage of a suspicious public URL.
+    Validates destination against SSRF policies, captures bounded evidence via
+    an ephemeral Chromium context, normalizes screenshot bytes, and generates a
+    deterministic risk evaluation and threat report.
+    """
+    if not config.browser_triage_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Browser URL triage service is disabled by server configuration.",
+        )
+
+    from agentproof.browser_sandbox import BrowserSandbox, BrowserUnavailableError
+    from agentproof.url_policy import production_url_policy, sanitize_url_for_display
+
+    # Pre-validate URL syntax and schemes before browser execution
+    pre_val = production_url_policy.validate_url(req.url)
+    if not pre_val.is_allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Target URL rejected by security policy: {pre_val.error}",
+        )
+
+    sandbox = BrowserSandbox(policy=production_url_policy)
+    try:
+        capture = await sandbox.scan_url(
+            target_url=req.url,
+            capture_mode=req.capture_mode,
+        )
+    except BrowserUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=f"Browser runtime unavailable: {exc}")
+    except Exception as exc:
+        logger.exception("Unexpected error during URL triage")
+        raise HTTPException(status_code=500, detail="Internal browser triage error.")
+
+    report = default_multimodal_analyzer.analyze_capture(
+        capture=capture,
+        model_name=req.model_name,
+    )
+    return report
+
+
+@app.post(
+    "/api/browser/triage",
+    response_model=URLTriageThreatReport,
+    dependencies=[Depends(verify_companion_token)],
+    include_in_schema=True,
+)
+async def triage_browser_alias_endpoint(req: URLTriageRequest) -> URLTriageThreatReport:
+    """Canonical alias endpoint for /api/url/triage."""
+    return await triage_url_endpoint(req)
+
+
+# ---------------------------------------------------------------------------
+# Cloud Gemma 4 Multimodal Threat Analysis Endpoints
+# ---------------------------------------------------------------------------
 
 @app.post("/api/multimodal/analyze", response_model=MultimodalAnalysisResponse)
 @app.post("/api/v1/analyze/screenshot", response_model=MultimodalAnalysisResponse)
@@ -782,6 +914,5 @@ async def analyze_screenshot_endpoint(
             status_code=500,
             detail="Internal error during threat analysis. Please retry your request.",
         )
-
 
 

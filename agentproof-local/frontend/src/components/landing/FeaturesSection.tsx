@@ -13,6 +13,8 @@ import {
   Play,
   RotateCcw,
 } from "lucide-react"
+import { ThreatDiscoveryChamber } from "./ThreatDiscoveryChamber"
+
 
 const RISKS = [
   {
@@ -106,117 +108,10 @@ export function FeaturesSection() {
         {/* ========================================================================= */}
         {/* SECTION 1: UNDERSTAND THE RISKS                                           */}
         {/* ========================================================================= */}
-        <div className="mb-28 rounded-2xl border border-white/15 bg-[#0B0D13]/85 p-6 md:p-10 backdrop-blur-xl shadow-2xl">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-white/10">
-            <div>
-              <span className="text-xs font-mono font-bold tracking-widest text-neutral-300 uppercase">
-                Stage 01 • Threat Discovery
-              </span>
-              <h3 className="text-2xl font-bold text-white mt-1">Understand the Risks</h3>
-              <p className="text-xs sm:text-sm text-neutral-300 mt-1 max-w-xl">
-                Inspect real-world threat vectors where autonomous agents deviate from safe operational limits.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-mono text-white">
-              <ShieldAlert className="h-4 w-4" />
-              <span>Deterministic Allowlist Standard</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Risk Selection Tabs (5 cols) */}
-            <div className="lg:col-span-5 space-y-2.5">
-              {RISKS.map((risk, index) => {
-                const isSelected = selectedRiskIndex === index
-                const Icon = risk.icon
-                return (
-                  <button
-                    key={risk.id}
-                    onClick={() => setSelectedRiskIndex(index)}
-                    className={`w-full flex items-center gap-3.5 rounded-xl border p-3.5 text-left transition-all ${
-                      isSelected
-                        ? "border-white bg-white/15 text-white shadow-[0_0_20px_rgba(255,255,255,0.15)]"
-                        : "border-white/5 bg-[#12151D] text-neutral-400 hover:border-white/20 hover:bg-[#181B24]"
-                    }`}
-                  >
-                    <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
-                        isSelected
-                          ? "border-white bg-white/20 text-white"
-                          : "border-white/10 bg-[#0B0D13] text-neutral-500"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold truncate text-white">
-                          {risk.title}
-                        </span>
-                        <span
-                          className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                            risk.severity === "CRITICAL"
-                              ? "bg-[#FF6577]/20 text-[#FF6577]"
-                              : "bg-white/20 text-white"
-                          }`}
-                        >
-                          {risk.severity}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-neutral-400 block truncate mt-0.5">
-                        {risk.category}
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Risk Detail Inspector (7 cols) */}
-            <div className="lg:col-span-7 rounded-xl border border-white/10 bg-[#050608] p-5 shadow-inner">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
-                <span className="text-xs font-mono text-neutral-300 flex items-center gap-2">
-                  <Terminal className="h-3.5 w-3.5 text-white" />
-                  <span>Agent Action Proposal Payload</span>
-                </span>
-                <span className="text-[10px] font-mono text-[#FF6577] bg-[#FF6577]/10 px-2 py-0.5 rounded border border-[#FF6577]/30">
-                  FLAGGED BY POLICY
-                </span>
-              </div>
-
-              {/* JSON Payload viewer */}
-              <pre className="rounded-lg bg-[#0A0C11] border border-white/5 p-4 text-[12px] font-mono text-neutral-300 overflow-x-auto leading-relaxed">
-                <code>
-{JSON.stringify(
-  RISKS[selectedRiskIndex].payload,
-  null,
-  2
-)}
-                </code>
-              </pre>
-
-              <div className="mt-4 space-y-3 text-xs">
-                <div className="rounded-lg bg-[#FF6577]/10 border border-[#FF6577]/25 p-3">
-                  <span className="font-semibold text-[#FF6577] block mb-0.5">
-                    Impact if Unrestricted:
-                  </span>
-                  <span className="text-neutral-200">
-                    {RISKS[selectedRiskIndex].consequence}
-                  </span>
-                </div>
-
-                <div className="rounded-lg bg-white/10 border border-white/20 p-3">
-                  <span className="font-semibold text-white block mb-0.5">
-                    AgentGuard Enforcement:
-                  </span>
-                  <span className="text-neutral-200">
-                    {RISKS[selectedRiskIndex].mitigation}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="mb-28">
+          <ThreatDiscoveryChamber />
         </div>
+
 
         {/* ========================================================================= */}
         {/* SECTION 2: EXPLAIN IN PLAIN LANGUAGE                                      */}

@@ -249,6 +249,11 @@ class QuarantineManager:
 
         try:
             if vault_target.exists():
+                try:
+                    import stat
+                    os.chmod(vault_target, stat.S_IWRITE | stat.S_IREAD)
+                except Exception:
+                    pass
                 vault_target.unlink()
 
             entry["status"] = "permanently_deleted"
