@@ -10,6 +10,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Res
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from contextlib import asynccontextmanager
+import logging
+
 from agentproof.config import config
 from agentproof.llm_client import check_ollama_connection
 from agentproof.metrics import calculate_metrics
@@ -28,10 +31,27 @@ from agentproof.scenario_runner import (
 )
 from agentproof.schemas import ScenarioModel
 
+logger = logging.getLogger("agentguard.server")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager ensuring clean resource shutdown."""
+    yield
+    # Clean up browser sandbox runtime on application termination
+    try:
+        from agentproof.browser_sandbox import BrowserManager
+        mgr = await BrowserManager.get_instance()
+        await mgr.close()
+    except Exception:
+        pass
+
+
 app = FastAPI(
     title="AgentProof Local API",
     description="Deterministic AI Agent Security & Policy Evaluation Backend",
     version=config.app_version,
+    lifespan=lifespan,
 )
 
 # Narrow CORS configuration for local development
@@ -59,12 +79,53 @@ class EvaluationRequest(BaseModel):
 def get_health() -> dict[str, Any]:
     """Health check returning backend status and live Ollama connectivity."""
     ollama_info = check_ollama_connection(config.ollama_url, timeout=3)
+    browser_info = {
+        "enabled": config.browser_triage_enabled,
+        "available": True,
+    }
+    try:
+        from agentproof.browser_sandbox import BrowserManager
+        mgr = BrowserManager()
+        is_avail, err = mgr.is_available()
+        browser_info["available"] = is_avail
+        if err:
+            browser_info["error"] = err
+    except Exception as exc:
+        browser_info["available"] = False
+        browser_info["error"] = str(exc)
+
     return {
         "status": "healthy",
         "version": config.app_version,
         "backend": "FastAPI + AgentProof Core",
         "ollama": ollama_info,
+        "browser_triage": browser_info,
         "default_model": config.default_model,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/ai/readiness")
+def get_ai_readiness() -> dict[str, Any]:
+    """Readiness and capability check for local AI and browser sandbox triage."""
+    ollama_info = check_ollama_connection(config.ollama_url, timeout=3)
+    browser_avail = False
+    browser_err = None
+    try:
+        from agentproof.browser_sandbox import BrowserManager
+        mgr = BrowserManager()
+        browser_avail, browser_err = mgr.is_available()
+    except Exception as exc:
+        browser_err = str(exc)
+
+    return {
+        "status": "ready" if ollama_info.get("connected") else "degraded",
+        "ollama": ollama_info,
+        "browser_sandbox": {
+            "enabled": config.browser_triage_enabled,
+            "available": browser_avail,
+            "error": browser_err,
+        },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -606,6 +667,118 @@ def summarize_privacy_policy_endpoint(req: OllamaPrivacyPolicyRequest) -> dict[s
         url=req.url,
         model_name=req.model_name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Browser Autonomous URL Triage & Multimodal Analysis Endpoints
+# ---------------------------------------------------------------------------
+
+from agentproof.multimodal_analyzer import MultimodalThreatReport, default_multimodal_analyzer
+
+
+class URLTriageRequest(BaseModel):
+    """Request payload for passive autonomous URL triage."""
+    url: str = Field(..., description="Target public HTTP/HTTPS URL to triage passively.", max_length=2048)
+    capture_mode: Literal["viewport", "full_page"] = Field(
+        default="viewport",
+        description="Capture mode for screenshot observation (viewport or full_page).",
+    )
+    model_name: Optional[str] = Field(
+        default=None,
+        description="Optional local Ollama model name for explanation synthesis.",
+    )
+
+
+class MultimodalAnalyzeRequest(BaseModel):
+    """Request payload for uploaded screenshot threat evaluation."""
+    image_base64: str = Field(..., description="Base64-encoded image bytes (PNG, JPEG, WebP).")
+    url: Optional[str] = Field(default="uploaded_screenshot", description="Associated URL context if any.")
+
+
+@app.post(
+    "/api/url/triage",
+    response_model=MultimodalThreatReport,
+    dependencies=[Depends(verify_companion_token)],
+    responses={
+        400: {"description": "Invalid or blocked URL target"},
+        401: {"description": "Unauthorized: valid companion token required"},
+        503: {"description": "Browser sandbox service unavailable"},
+    },
+)
+async def triage_url_endpoint(req: URLTriageRequest) -> MultimodalThreatReport:
+    """
+    Execute secure, isolated, passive triage of a suspicious public URL.
+    Validates destination against SSRF policies, captures bounded evidence via
+    an ephemeral Chromium context, normalizes screenshot bytes, and generates a
+    deterministic risk evaluation and threat report.
+    """
+    if not config.browser_triage_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Browser URL triage service is disabled by server configuration.",
+        )
+
+    from agentproof.browser_sandbox import BrowserSandbox, BrowserUnavailableError
+    from agentproof.url_policy import production_url_policy, sanitize_url_for_display
+
+    # Pre-validate URL syntax and schemes before browser execution
+    pre_val = production_url_policy.validate_url(req.url)
+    if not pre_val.is_allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Target URL rejected by security policy: {pre_val.error}",
+        )
+
+    sandbox = BrowserSandbox(policy=production_url_policy)
+    try:
+        capture = await sandbox.scan_url(
+            target_url=req.url,
+            capture_mode=req.capture_mode,
+        )
+    except BrowserUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=f"Browser runtime unavailable: {exc}")
+    except Exception as exc:
+        logger.exception("Unexpected error during URL triage")
+        raise HTTPException(status_code=500, detail="Internal browser triage error.")
+
+    report = default_multimodal_analyzer.analyze_capture(
+        capture=capture,
+        model_name=req.model_name,
+    )
+    return report
+
+
+@app.post(
+    "/api/browser/triage",
+    response_model=MultimodalThreatReport,
+    dependencies=[Depends(verify_companion_token)],
+    include_in_schema=True,
+)
+async def triage_browser_alias_endpoint(req: URLTriageRequest) -> MultimodalThreatReport:
+    """Canonical alias endpoint for /api/url/triage."""
+    return await triage_url_endpoint(req)
+
+
+@app.post(
+    "/api/multimodal/analyze",
+    response_model=MultimodalThreatReport,
+    dependencies=[Depends(verify_companion_token)],
+)
+def analyze_screenshot_endpoint(req: MultimodalAnalyzeRequest) -> MultimodalThreatReport:
+    """Analyze an uploaded screenshot through ImageProcessor and deterministic risk engine."""
+    import base64
+
+    try:
+        image_bytes = base64.b64decode(req.image_base64, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 image data: {exc}")
+
+    report = default_multimodal_analyzer.analyze_screenshot(
+        image_bytes=image_bytes,
+        url=req.url or "uploaded_screenshot",
+    )
+    return report
+
 
 
 
