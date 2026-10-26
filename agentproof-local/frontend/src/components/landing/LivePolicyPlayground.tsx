@@ -284,7 +284,7 @@ export function LivePolicyPlayground() {
 
           {/* Right Column: 3D Containment Display (6 cols) */}
           <div
-            className={`relative flex flex-col items-center justify-center rounded-2xl border p-8 md:p-10 text-center overflow-hidden min-h-[380px] transition-all duration-300 ${
+            className={`lg:col-span-6 w-full relative flex flex-col items-center justify-center rounded-2xl border p-8 md:p-10 text-center overflow-hidden min-h-[380px] transition-all duration-300 ${
               evaluationState === "result" && !lastResult?.allowed
                 ? "border-[#FF4D61]/50 bg-gradient-to-b from-[#180B10] via-[#0E060A] to-[#070305] shadow-[inset_0_1px_0_0_rgba(255,100,120,0.3),0_8px_32px_rgba(255,77,97,0.25)] ring-1 ring-[#FF4D61]/25"
                 : evaluationState === "result" && lastResult?.allowed
