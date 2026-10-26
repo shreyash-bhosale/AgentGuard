@@ -54,6 +54,7 @@
 - [⚠️ Limitations](#️-limitations)
 - [🛣️ Future Improvements](#️-future-improvements)
 - [🤝 Contributing](#-contributing)
+- [👥 Contributors](#-contributors)
 - [📄 License](#-license)
 - [🙌 Acknowledgements](#-acknowledgements)
 
@@ -510,6 +511,26 @@ Contributions, bug reports, documentation improvements, and security-focused sug
    ```bash
    git push origin feat/improve-security-analysis
    ```
+
+---
+
+## 👥 Contributors
+
+A huge thank you to everyone who has contributed to making **AgentGuard** stronger, safer, and more resilient! 🛡️
+
+<div align="center">
+
+| Contributor | Role & Contributions | GitHub Profile |
+| :---: | :--- | :---: |
+| <a href="https://github.com/shreyash-bhosale"><img src="https://github.com/shreyash-bhosale.png?size=100" width="70" height="70" style="border-radius:50%;" alt="Shreyash Bhosale"/><br /><sub><b>Shreyash Bhosale</b></sub></a> | 🛡️ **Creator & Lead Maintainer**<br />• System Architecture & Deterministic Security Engines<br />• Full-Stack FastAPI Companion & React Frontend<br />• Multimodal Gemma AI Threat Detection & Cloud Deployments | [![GitHub](https://img.shields.io/badge/shreyash--bhosale-181717?style=flat&logo=github)](https://github.com/shreyash-bhosale) |
+| <a href="https://github.com/Pawansankhla07"><img src="https://github.com/Pawansankhla07.png?size=100" width="70" height="70" style="border-radius:50%;" alt="Pawan Sankhla"/><br /><sub><b>Pawan Sankhla</b></sub></a> | 🎨 **Open Source Contributor**<br />• Enhanced Launch Lab UI/UX (<a href="https://github.com/shreyash-bhosale/AgentGuard/pull/2">#2</a>)<br />• Improved user workflows and visual presentation | [![GitHub](https://img.shields.io/badge/Pawansankhla07-181717?style=flat&logo=github)](https://github.com/Pawansankhla07) |
+| <a href="https://github.com/vaniarya965"><img src="https://github.com/vaniarya965.png?size=100" width="70" height="70" style="border-radius:50%;" alt="Vanishree Arya"/><br /><sub><b>Vanishree Arya</b></sub></a> | 🔒 **Open Source Contributor**<br />• Implemented Policy Decision Security Audit Logging (<a href="https://github.com/shreyash-bhosale/AgentGuard/pull/1">#1</a>)<br />• Strengthened deterministic security verification suite | [![GitHub](https://img.shields.io/badge/vaniarya965-181717?style=flat&logo=github)](https://github.com/vaniarya965) |
+
+</div>
+
+<br />
+
+> 💡 **Want to contribute?** Check out our [Contributing Guide](#-contributing) to get started! All contributions — from security tests and bug fixes to UI enhancements and documentation — are warmly welcomed.
 
 ---
 
