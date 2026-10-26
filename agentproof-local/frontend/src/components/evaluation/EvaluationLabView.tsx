@@ -10,9 +10,6 @@ import {
   Loader2,
   CheckCircle2,
 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { StatusBadge } from "@/components/ui/status-badge"
-import { PageHeader } from "@/components/ui/page-header"
 import { ModelsInfo, ScenarioModel, EvaluationReport } from "@/types"
 
 interface EvaluationLabViewProps {
@@ -80,144 +77,157 @@ export function EvaluationLabView({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Evaluation Lab"
-        description="Configure evaluation parameters, choose target models, select security scenarios, and test deterministic policy containment."
-        badge={
-          <StatusBadge variant={evalMode === "llm" ? "info" : "neutral"}>
-            Mode: {evalMode.toUpperCase()}
-          </StatusBadge>
-        }
-      />
+      {/* Header section matching 08_evaluation_lab.png */}
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-[#F1F5FB] md:text-3xl">
+              Evaluation Lab
+            </h1>
+            <span className="rounded border border-[#232F42] bg-[#10141D] px-2.5 py-0.5 text-[11px] font-mono font-medium uppercase tracking-wider text-[#98A7BB]">
+              MODE: {evalMode === "llm" ? "LOCAL LLM" : "BASELINE"}
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs text-[#98A7BB] max-w-3xl leading-relaxed md:text-sm">
+            Configure evaluation parameters, choose target models, select security scenarios, and test deterministic policy containment.
+          </p>
+        </div>
+      </div>
 
       {/* Configuration Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Mode Selector */}
-        <Card className="border-[#263246] bg-[#121925]">
-          <CardContent className="p-5 space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-wider text-[#98A7BB]">
-              Execution Mode
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setEvalMode("baseline")}
-                className={`rounded-lg border px-3 py-2.5 text-xs font-medium text-left transition-all ${
-                  evalMode === "baseline"
-                    ? "border-[#8585FF] bg-[#8585FF]/15 text-[#F1F5FB] font-semibold"
-                    : "border-[#263246] bg-[#0E131D] text-[#98A7BB] hover:border-[#3B4A63]"
-                }`}
-              >
-                <div className="font-semibold text-[#F1F5FB]">Deterministic</div>
-                <div className="text-[10px] text-[#98A7BB]">Baseline (No LLM)</div>
-              </button>
+        <div className="rounded-xl border border-[#18202F] bg-[#0B0F17] p-5 shadow-sm space-y-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[#98A7BB]">
+            Execution Mode
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => setEvalMode("baseline")}
+              className={`rounded-lg border px-3.5 py-2.5 text-xs font-medium text-left transition-all cursor-pointer ${
+                evalMode === "baseline"
+                  ? "border-[#8585FF] bg-[#8585FF]/15 text-[#F1F5FB] font-semibold shadow-[0_0_16px_rgba(133,133,255,0.12)]"
+                  : "border-[#1A2333] bg-[#0E131D] text-[#98A7BB] hover:border-[#2D3C55] hover:bg-[#131B29]"
+              }`}
+            >
+              <div className="font-semibold text-[#F1F5FB]">Deterministic</div>
+              <div className="text-[10px] text-[#98A7BB] mt-0.5">Baseline (No LLM)</div>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => setEvalMode("llm")}
-                disabled={!isOllamaConnected}
-                className={`rounded-lg border px-3 py-2.5 text-xs font-medium text-left transition-all ${
-                  evalMode === "llm"
-                    ? "border-[#8585FF] bg-[#8585FF]/15 text-[#F1F5FB] font-semibold"
-                    : "border-[#263246] bg-[#0E131D] text-[#98A7BB] hover:border-[#3B4A63]"
-                } ${!isOllamaConnected ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <div className="font-semibold text-[#F1F5FB]">Local LLM</div>
-                <div className="text-[10px] text-[#98A7BB]">Ollama / Gemma 4</div>
-              </button>
+            <button
+              type="button"
+              onClick={() => setEvalMode("llm")}
+              disabled={!isOllamaConnected}
+              className={`rounded-lg border px-3.5 py-2.5 text-xs font-medium text-left transition-all ${
+                evalMode === "llm"
+                  ? "border-[#8585FF] bg-[#8585FF]/15 text-[#F1F5FB] font-semibold shadow-[0_0_16px_rgba(133,133,255,0.12)]"
+                  : "border-[#1A2333] bg-[#0E131D] text-[#98A7BB] hover:border-[#2D3C55] hover:bg-[#131B29]"
+              } ${!isOllamaConnected ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            >
+              <div className="font-semibold text-[#F1F5FB]">Local LLM</div>
+              <div className="text-[10px] text-[#98A7BB] mt-0.5">Ollama / Gemma 4</div>
+            </button>
+          </div>
+          {!isOllamaConnected && (
+            <div className="text-[11px] text-[#F2B84B] flex items-center gap-1.5 pt-1">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>Ollama offline. Start 'ollama serve' for LLM mode.</span>
             </div>
-            {!isOllamaConnected && (
-              <div className="text-[11px] text-[#F2B84B] flex items-center gap-1.5 pt-1">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                <span>Ollama offline. Start 'ollama serve' for LLM mode.</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          )}
+        </div>
 
         {/* Model Selection */}
-        <Card className="border-[#263246] bg-[#121925]">
-          <CardContent className="p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#98A7BB]">
-                Target Model
-              </span>
-              <Cpu className="h-3.5 w-3.5 text-[#8585FF]" />
-            </div>
+        <div className="rounded-xl border border-[#18202F] bg-[#0B0F17] p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#98A7BB]">
+              Target Model
+            </span>
+            <Cpu className="h-3.5 w-3.5 text-[#8585FF]" />
+          </div>
 
+          <div className="relative">
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
               disabled={evalMode === "baseline" || !isOllamaConnected}
               aria-label="Target Model"
-              className="w-full rounded-lg border border-[#263246] bg-[#0E131D] px-3 py-2 text-xs text-[#F1F5FB] focus:border-[#8585FF] focus:outline-none disabled:opacity-50 font-mono"
+              className="w-full rounded-lg border border-[#1A2333] bg-[#0E131D] px-3.5 py-2.5 text-xs text-[#F1F5FB] font-mono focus:border-[#8585FF] focus:outline-none disabled:opacity-50 transition-all cursor-pointer"
             >
               {modelsInfo?.models && modelsInfo.models.length > 0 ? (
                 modelsInfo.models.map((m) => (
-                  <option key={m} value={m}>
+                  <option key={m} value={m} className="bg-[#0E131D] text-[#F1F5FB]">
                     {m}
                   </option>
                 ))
               ) : (
-                <option value="gemma4:e2b-it-qat">gemma4:e2b-it-qat (Default)</option>
+                <option value="gemma4:e2b-it-qat" className="bg-[#0E131D] text-[#F1F5FB]">
+                  gemma4:e2b-it-qat
+                </option>
               )}
             </select>
-            <div className="text-[11px] text-[#98A7BB] font-mono">
-              Temperature: 0.0 (Reproducible proposals)
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="text-[11px] text-[#98A7BB] font-mono">
+            Temperature: 0.0 (Reproducible proposals)
+          </div>
+        </div>
 
         {/* Timeout Bounds */}
-        <Card className="border-[#263246] bg-[#121925]">
-          <CardContent className="p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#98A7BB]">
-                Request Timeout
-              </span>
-              <Clock className="h-3.5 w-3.5 text-[#8585FF]" />
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={5}
-                max={180}
-                step={5}
-                value={timeoutSec}
-                onChange={(e) => setTimeoutSec(Number(e.target.value))}
-                disabled={evalMode === "baseline"}
-                aria-label="Request Timeout"
-                className="w-full accent-[#8585FF] cursor-pointer disabled:opacity-50"
-              />
-              <span className="font-mono text-xs font-bold text-[#F1F5FB] w-12 text-right">
-                {timeoutSec}s
-              </span>
-            </div>
-            <div className="text-[11px] text-[#98A7BB]">
-              Fails closed if the model exceeds deadline.
-            </div>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-[#18202F] bg-[#0B0F17] p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#98A7BB]">
+              Request Timeout
+            </span>
+            <Clock className="h-3.5 w-3.5 text-[#8585FF]" />
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <input
+              type="range"
+              min={5}
+              max={180}
+              step={5}
+              value={timeoutSec}
+              onChange={(e) => setTimeoutSec(Number(e.target.value))}
+              disabled={evalMode === "baseline"}
+              aria-label="Request Timeout"
+              className="security-slider w-full cursor-pointer disabled:opacity-50"
+            />
+            <span className="font-mono text-xs font-bold text-[#F1F5FB] w-12 text-right shrink-0">
+              {timeoutSec}s
+            </span>
+          </div>
+          <div className="text-[11px] text-[#98A7BB]">
+            Fails closed if the model exceeds deadline.
+          </div>
+        </div>
       </div>
 
-      {/* Scenario Selection Header */}
-      <Card className="border-[#263246] bg-[#121925]">
-        <div className="border-b border-[#263246] p-4 flex flex-wrap items-center justify-between gap-3 bg-[#0E131D]">
-          <div className="flex items-center gap-3">
+      {/* Scenario Selection Header & Grid */}
+      <div className="rounded-xl border border-[#18202F] bg-[#0B0F17] overflow-hidden shadow-sm">
+        {/* Animated running progress bar */}
+        {isRunning && (
+          <div className="h-1 w-full overflow-hidden bg-[#18202F]">
+            <div className="h-full w-full bg-gradient-to-r from-transparent via-[#8585FF] to-transparent animate-pulse" />
+          </div>
+        )}
+
+        <div className="border-b border-[#18202F] p-4 flex flex-wrap items-center justify-between gap-3 bg-[#0E131D]">
+          <div className="flex items-center gap-4">
             <span className="text-xs font-bold uppercase tracking-wider text-[#F1F5FB]">
-              Scenarios ({selectedScenarioIds.length} of {scenarios.length} selected)
+              SCENARIOS ({selectedScenarioIds.length} OF {scenarios.length} SELECTED)
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <button
+                type="button"
                 onClick={handleSelectAllVisible}
-                className="text-xs text-[#8585FF] hover:underline flex items-center gap-1 font-mono"
+                className="text-xs text-[#8585FF] hover:text-[#9E9EFF] hover:underline flex items-center gap-1.5 font-sans font-medium transition-colors cursor-pointer"
               >
                 <CheckSquare className="h-3.5 w-3.5" /> Select All
               </button>
-              <span className="text-[#263246]">|</span>
               <button
+                type="button"
                 onClick={handleClearAll}
-                className="text-xs text-[#98A7BB] hover:underline flex items-center gap-1 font-mono"
+                className="text-xs text-[#98A7BB] hover:text-[#F1F5FB] hover:underline flex items-center gap-1.5 font-sans font-medium transition-colors cursor-pointer"
               >
                 <Square className="h-3.5 w-3.5" /> Clear
               </button>
@@ -229,29 +239,30 @@ export function EvaluationLabView({
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               aria-label="Filter by category"
-              className="rounded-md border border-[#263246] bg-[#121925] px-2.5 py-1 text-xs text-[#F1F5FB] focus:border-[#8585FF] focus:outline-none font-mono"
+              className="rounded-lg border border-[#1A2333] bg-[#0B0F17] px-3 py-1.5 text-xs text-[#F1F5FB] font-mono focus:border-[#8585FF] focus:outline-none transition-all cursor-pointer"
             >
               {categories.map((cat) => (
-                <option key={cat} value={cat}>
+                <option key={cat} value={cat} className="bg-[#0B0F17] text-[#F1F5FB]">
                   Category: {cat}
                 </option>
               ))}
             </select>
 
             <button
+              type="button"
               onClick={handleStartRun}
               disabled={isRunning || selectedScenarioIds.length === 0}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#8585FF] px-4 py-1.5 text-xs font-semibold text-white shadow-md hover:bg-[#7272F5] transition-all disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#8585FF] hover:bg-[#7272F5] px-4.5 py-1.5 text-xs font-bold text-white shadow-md shadow-[#8585FF]/20 hover:shadow-[#8585FF]/30 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isRunning ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Evaluating...
+                  <span>Evaluating...</span>
                 </>
               ) : (
                 <>
                   <Play className="h-3.5 w-3.5 fill-current" />
-                  Run {selectedScenarioIds.length} Selected
+                  <span>Run {selectedScenarioIds.length} Selected</span>
                 </>
               )}
             </button>
@@ -259,70 +270,82 @@ export function EvaluationLabView({
         </div>
 
         {/* Scenarios Grid */}
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredScenarios.map((sc) => {
-              const isChecked = selectedScenarioIds.includes(sc.id)
-              return (
-                <div
-                  key={sc.id}
-                  onClick={() => handleToggleScenario(sc.id)}
-                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 transition-all ${
-                    isChecked
-                      ? "border-[#8585FF]/40 bg-[#8585FF]/8 text-[#F1F5FB]"
-                      : "border-[#263246] bg-[#0E131D]/60 text-[#98A7BB] hover:border-[#3B4A63]"
-                  }`}
-                >
-                  <div className="mt-0.5">
-                    {isChecked ? (
-                      <CheckSquare className="h-4 w-4 text-[#8585FF]" />
-                    ) : (
-                      <Square className="h-4 w-4 text-[#263246]" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-xs font-bold text-[#F1F5FB]">
-                        {sc.id}
-                      </span>
-                      <StatusBadge variant={sc.expected_allowed ? "allow" : "block"}>
-                        {sc.expected_allowed ? "Expect Allow" : "Expect Block"}
-                      </StatusBadge>
+        <div className="p-4 sm:p-5">
+          {filteredScenarios.length === 0 ? (
+            <div className="py-12 text-center text-xs text-[#98A7BB] font-mono">
+              No security scenarios match the selected category.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+              {filteredScenarios.map((sc) => {
+                const isChecked = selectedScenarioIds.includes(sc.id)
+                return (
+                  <div
+                    key={sc.id}
+                    onClick={() => handleToggleScenario(sc.id)}
+                    className={`relative flex cursor-pointer items-start gap-3.5 rounded-lg border p-3.5 transition-all duration-150 ${
+                      isChecked
+                        ? "border-[#8585FF]/45 bg-[#8585FF]/[0.08] text-[#F1F5FB] shadow-[0_0_15px_rgba(133,133,255,0.06)]"
+                        : "border-[#18202F] bg-[#0E131D]/80 text-[#98A7BB] hover:border-[#2D3C55] hover:bg-[#0E131D]"
+                    }`}
+                  >
+                    <div className="mt-0.5 shrink-0">
+                      {isChecked ? (
+                        <CheckSquare className="h-4 w-4 text-[#8585FF]" />
+                      ) : (
+                        <Square className="h-4 w-4 text-[#263246]" />
+                      )}
                     </div>
-                    <p className="mt-1 text-xs text-[#98A7BB] line-clamp-2">
-                      {sc.description}
-                    </p>
-                    <div className="mt-2 flex items-center gap-2 text-[11px] font-mono text-[#98A7BB]">
-                      <span className="text-[#8585FF]">{sc.action}</span>
-                      <span>&rarr;</span>
-                      <span className="text-[#55B9F5]">{sc.target}</span>
-                      <span className="text-[#263246]">|</span>
-                      <span>{sc.category}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs font-bold text-[#F1F5FB] tracking-tight">
+                          {sc.id}
+                        </span>
+                        {sc.expected_allowed ? (
+                          <span className="rounded border border-[#35C98A]/30 bg-[#35C98A]/10 px-2 py-0.5 text-[10px] font-mono font-semibold text-[#35C98A] uppercase tracking-wider shrink-0">
+                            EXPECT ALLOW
+                          </span>
+                        ) : (
+                          <span className="rounded border border-[#FF6577]/30 bg-[#FF6577]/10 px-2 py-0.5 text-[10px] font-mono font-semibold text-[#FF6577] uppercase tracking-wider shrink-0">
+                            EXPECT BLOCK
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-[#98A7BB] line-clamp-2 leading-relaxed">
+                        {sc.description}
+                      </p>
+                      <div className="mt-2.5 flex items-center gap-2 text-[11px] font-mono text-[#98A7BB]">
+                        <span className="text-[#8585FF] font-medium">{sc.action}</span>
+                        <span className="text-[#475569]">&rarr;</span>
+                        <span className="text-[#55B9F5] font-medium">{sc.target}</span>
+                        <span className="text-[#263246]">|</span>
+                        <span>{sc.category}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Completion Summary Table */}
       {latestReport && (
-        <div className="space-y-3">
+        <div className="space-y-3 mt-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-[#F1F5FB] flex items-center gap-2">
+            <h3 className="text-sm md:text-base font-semibold text-[#F1F5FB] flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-[#35C98A]" />
-              Latest Run Results ({latestReport.metadata.run_id})
+              <span>Latest Run Results ({latestReport.metadata.run_id})</span>
             </h3>
-            <span className="text-xs font-mono text-[#98A7BB]">
+            <span className="rounded-md border border-[#35C98A]/30 bg-[#35C98A]/10 px-2.5 py-1 text-xs font-mono font-semibold text-[#35C98A]">
               Accuracy: {latestReport.summary_metrics.policy_accuracy_pct}%
             </span>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-[#263246] bg-[#121925]">
+          <div className="overflow-x-auto rounded-xl border border-[#18202F] bg-[#0B0F17] shadow-sm">
             <table className="w-full text-left text-xs">
-              <thead className="border-b border-[#263246] bg-[#0E131D] text-[#98A7BB] font-mono uppercase text-[10px]">
+              <thead className="border-b border-[#18202F] bg-[#0E131D] text-[#98A7BB] font-mono uppercase text-[10px] tracking-wider">
                 <tr>
                   <th className="px-4 py-3">Scenario</th>
                   <th className="px-4 py-3">Proposed Action & Target</th>
@@ -333,40 +356,58 @@ export function EvaluationLabView({
                   <th className="px-4 py-3">Mock Tool Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#263246]/60">
+              <tbody className="divide-y divide-[#18202F]/60">
                 {latestReport.results.map((r) => (
-                  <tr key={r.scenario_id} className="hover:bg-[#182130]/50 transition-colors">
+                  <tr key={r.scenario_id} className="hover:bg-[#121926]/60 transition-colors">
                     <td className="px-4 py-3 font-mono font-medium text-[#F1F5FB]">
                       {r.scenario_id}
                     </td>
                     <td className="px-4 py-3 font-mono text-[11px] text-[#98A7BB]">
-                      {r.proposed_action || "None"} &rarr; {r.proposed_target || "None"}
+                      <span className="text-[#8585FF]">{r.proposed_action || "None"}</span>
+                      {" "}&rarr;{" "}
+                      <span className="text-[#55B9F5]">{r.proposed_target || "None"}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge variant={r.policy_allowed ? "allow" : "block"}>
-                        {r.policy_allowed ? "ALLOWED" : "BLOCKED"}
-                      </StatusBadge>
+                      {r.policy_allowed ? (
+                        <span className="rounded border border-[#35C98A]/30 bg-[#35C98A]/10 px-2 py-0.5 text-[10px] font-mono font-semibold text-[#35C98A] uppercase tracking-wider">
+                          ALLOWED
+                        </span>
+                      ) : (
+                        <span className="rounded border border-[#FF6577]/30 bg-[#FF6577]/10 px-2 py-0.5 text-[10px] font-mono font-semibold text-[#FF6577] uppercase tracking-wider">
+                          BLOCKED
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge variant={r.expected_allowed ? "allow" : "block"}>
-                        {r.expected_allowed ? "ALLOW" : "BLOCK"}
-                      </StatusBadge>
+                      {r.expected_allowed ? (
+                        <span className="rounded border border-[#35C98A]/30 bg-[#35C98A]/10 px-2 py-0.5 text-[10px] font-mono font-semibold text-[#35C98A] uppercase tracking-wider">
+                          ALLOW
+                        </span>
+                      ) : (
+                        <span className="rounded border border-[#FF6577]/30 bg-[#FF6577]/10 px-2 py-0.5 text-[10px] font-mono font-semibold text-[#FF6577] uppercase tracking-wider">
+                          BLOCK
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 font-mono">
-                      {r.policy_correct ? "✅ Match" : "❌ Disagree"}
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {r.policy_correct ? (
+                        <span className="text-[#35C98A]">✅ Match</span>
+                      ) : (
+                        <span className="text-[#FF6577]">❌ Disagree</span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 font-mono">
+                    <td className="px-4 py-3 font-mono text-xs">
                       {r.intent_match ? (
                         <span className="text-[#35C98A]">✅ Match</span>
                       ) : (
                         <span className="text-[#F2B84B]">⚠️ Drift</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-[#98A7BB]">
+                    <td className="px-4 py-3 font-mono text-xs">
                       {r.tool_success ? (
                         <span className="text-[#35C98A]">Executed (Mock)</span>
                       ) : (
-                        <span>Blocked (Simulated)</span>
+                        <span className="text-[#98A7BB]">Blocked (Simulated)</span>
                       )}
                     </td>
                   </tr>
